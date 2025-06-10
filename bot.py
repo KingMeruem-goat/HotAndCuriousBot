@@ -8,7 +8,7 @@ from flask import Flask, request
 TOKEN = "7771606520:AAFp9ZonHi-MSgi1Jah_M9KmrgGKzH9v_Lk"
 bot = telebot.TeleBot(TOKEN, threaded=False)
 bot_username = bot.get_me().username
-WEBHOOK_URL = f"https://hotandcuriousbot.onrender.com/{TOKEN}"  # remplace par ton URL Render
+WEBHOOK_URL = f"https://TON-NOM-RENDER.onrender.com/{TOKEN}"  # à remplacer par ton URL Render
 
 app = Flask(__name__)
 
@@ -71,89 +71,102 @@ questions = {
         "Quel est le moment de la journée où tu es le plus chaud·e ?",
         "As-tu déjà joué avec toi-même en pensant à moi ? Raconte sans tabou.",
         "Que dirais‑tu si je te proposais un appel vidéo torride maintenant ?",
-        "Tu préfères me regarder ou m’écouter pendant un moment très hot ?",
-        "Quel est le truc le plus coquin que tu pourrais faire avec un objet près de toi ?",
-        "Tu m’envoies un message audio sexy maintenant ? (ose 😈)",
-        "T’as déjà fantasmé sur ce qu’on ferait dans le même lit ?",
-        "Envoie‑moi une phrase hot que tu voudrais me dire les yeux dans les yeux."
-    ],
-    "Dare Time": [
-        "Envoie une photo d’un endroit de ton corps que j’adore (sans visage).",
-        "Enregistre un audio très lent où tu dis ce que tu ferais si j’étais là.",
-        "Vidéo : dis quelque chose de chaud avec un regard de tueur·euse.",
-        "Choisis un mot, et chaque fois que tu l’entends aujourd’hui, pense à moi nu·e.",
-        "Envoie un vocal où tu gémis discrètement pendant 10 secondes.",
-        "Fais un strip‑tease d’une pièce à la caméra.",
-        "Envoie un selfie à moitié couvert·e (laisse deviner le reste).",
-        "Écris une mini‑histoire..."
     ]
 }
 
-# === STOCKAGE EN MÉMOIRE POUR MULTIJOUEUR ===
-pending_games = {}  # {game_id: {'host': user_id, 'players': [user_id1, user_id2]}}
+# === SESSIONS ===
+sessions = {}  # key: player_id, value: game info
+invitations = {}  # key: token, value: player1_id
+game_states = {}  # key: player1_id, value: game_state
 
-# === COMMANDES DE BASE ===
+# === OUTILS ===
+def build_levels_keyboard(player1_id):
+    markup = InlineKeyboardMarkup()
+    for level in questions.keys():
+        markup.add(InlineKeyboardButton(level, callback_data=f"level_{level}|{player1_id}"))
+    markup.add(InlineKeyboardButton("Fin de partie ❌", callback_data=f"end|{player1_id}"))
+    return markup
+
+def ask_question(level, current_turn, other_player_id):
+    q = random.choice(questions[level])
+    return f"🔄 Tour de jeu\n\n🎯 *{current_turn}*, choisis une question !\n\n🎤 Question pour *{other_player_id}* :\n_{q}_"
+
+def send_question(player1_id, level):
+    state = game_states[player1_id]
+    p1, p2 = state["players"]
+    current_turn = state["current_turn"]
+    other = p1 if current_turn == p2 else p2
+
+    text = ask_question(level, current_turn, other)
+    markup = build_levels_keyboard(player1_id)
+
+    for pid in (p1, p2):
+        bot.send_message(pid, text, reply_markup=markup, parse_mode="Markdown")
+
+def end_game(player1_id):
+    state = game_states.get(player1_id)
+    if not state: return
+    for pid in state["players"]:
+        try:
+            bot.send_message(pid, "🚫 Fin de la partie ! À bientôt 😘")
+        except:
+            pass
+    game_states.pop(player1_id, None)
+
+# === HANDLERS ===
 @bot.message_handler(commands=['start'])
-def handle_start(message):
+def start(message):
     user_id = message.from_user.id
-    args = message.text.split()
+    sessions[user_id] = {}
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("Jouer à deux 🔗", callback_data="multiplayer"))
+    bot.send_message(user_id, "🔥 Bienvenue dans *Hot & Curious* !\n\nChoisis un mode :", parse_mode="Markdown", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: True)
+def callback(call):
+    data = call.data
+    user_id = call.from_user.id
+
+    if data == "multiplayer":
+        token = str(user_id)
+        link = f"https://t.me/{bot_username}?start={token}"
+        invitations[token] = user_id
+        bot.send_message(user_id, f"🔗 Partage ce lien avec ton/ta partenaire :\n{link}\n\nLa partie commencera dès qu’il/elle cliquera dessus.")
     
-    if len(args) > 1 and args[1].startswith("join_"):
-        game_id = args[1].replace("join_", "")
-        if game_id in pending_games and len(pending_games[game_id]['players']) < 2:
-            pending_games[game_id]['players'].append(user_id)
-            bot.send_message(user_id, "Tu as rejoint la partie ! Le jeu va commencer 😏")
-            # Commencer le jeu ici automatiquement
-            start_game(game_id)
-        else:
-            bot.send_message(user_id, "Lien invalide ou partie déjà complète.")
-    else:
-        markup = InlineKeyboardMarkup()
-        markup.row_width = 1
-        markup.add(
-            InlineKeyboardButton("Jouer en solo 🎲", callback_data="solo"),
-            InlineKeyboardButton("Jouer à deux ❤️", callback_data="multiplayer")
-        )
-        bot.send_message(user_id, "Bienvenue dans *Hot & Curious* 🔥\nChoisis un mode :", parse_mode='Markdown', reply_markup=markup)
+    elif data.startswith("level_"):
+        level, player1_id = data.split("|")
+        level = level.replace("level_", "")
+        if int(player1_id) in game_states:
+            send_question(int(player1_id), level)
+            # Alterne le joueur
+            gs = game_states[int(player1_id)]
+            gs["current_turn"] = gs["players"][1] if gs["current_turn"] == gs["players"][0] else gs["players"][0]
 
-# === DÉBUT DE PARTIE MULTIJOUEUR ===
-@bot.callback_query_handler(func=lambda call: call.data == "multiplayer")
-def multiplayer_mode(call):
-    user_id = call.from_user.id
-    game_id = str(user_id)
-    pending_games[game_id] = {'host': user_id, 'players': [user_id]}
-    invite_link = f"https://t.me/{bot_username}?start=join_{game_id}"
-    bot.send_message(user_id, f"Envoie ce lien à ton/ta partenaire pour commencer :\n{invite_link}")
+    elif data.startswith("end"):
+        player1_id = int(data.split("|")[1])
+        end_game(player1_id)
 
-# === DÉBUT DE PARTIE SOLO ===
-@bot.callback_query_handler(func=lambda call: call.data == "solo")
-def solo_mode(call):
-    user_id = call.from_user.id
-    send_question(user_id)
+@bot.message_handler(commands=['start'])
+def join_game(message):
+    args = message.text.split()
+    if len(args) > 1 and args[1] in invitations:
+        player1_id = int(args[1])
+        player2_id = message.from_user.id
+        game_states[player1_id] = {"players": (player1_id, player2_id), "current_turn": player1_id}
+        bot.send_message(player1_id, f"🎮 Ton/ta partenaire a rejoint la partie ! C’est à toi de commencer 😏")
+        bot.send_message(player2_id, f"🎮 Tu as rejoint la partie ! Prépare-toi 🔥")
+        # Aucun envoi automatique de question ici
 
-# === FONCTION DE LANCEMENT D'UNE PARTIE ===
-def start_game(game_id):
-    players = pending_games[game_id]['players']
-    for player_id in players:
-        send_question(player_id)
-
-# === ENVOI DES QUESTIONS ===
-def send_question(user_id):
-    niveau = random.choice(list(questions.keys()))
-    question = random.choice(questions[niveau])
-    bot.send_message(user_id, f"*{niveau}*\n{question}", parse_mode='Markdown')
-
-# === FLASK WEBHOOK ===
-@app.route(f'/{TOKEN}', methods=['POST'])
+# === FLASK SETUP POUR WEBHOOK ===
+@app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
-    return '', 200
+    return "", 200
 
-@app.route('/')
+@app.route("/", methods=["GET"])
 def index():
-    return 'Bot en ligne !'
+    return "Bot actif"
 
-if __name__ == '__main__':
-    bot.remove_webhook()
-    bot.set_webhook(url=WEBHOOK_URL)
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+# === SETUP WEBHOOK ===
+bot.remove_webhook()
+bot.set_webhook(url=WEBHOOK_URL)
