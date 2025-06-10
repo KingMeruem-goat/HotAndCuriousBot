@@ -134,8 +134,8 @@ def handle_start(message):
 def callback_handler(call):
     if call.data == 'solo':
         choose_level(call.message, call.message.chat.id)
-    elif message.text == "👥 Jouer à deux":
-    games[user_id] = {
+    elif message.text == "👥 Jouer à deux":    
+        games[user_id] = {
         "players": [user_id],
         "turn": 0,
         "questions": [],
