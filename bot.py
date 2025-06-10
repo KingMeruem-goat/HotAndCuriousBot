@@ -8,7 +8,7 @@ from flask import Flask, request
 TOKEN = "7771606520:AAFp9ZonHi-MSgi1Jah_M9KmrgGKzH9v_Lk"
 bot = telebot.TeleBot(TOKEN, threaded=False)
 bot_username = bot.get_me().username
-WEBHOOK_URL = f"https://TON-NOM-RENDER.onrender.com/{TOKEN}"  # à remplacer par ton URL Render
+WEBHOOK_URL = f"https://hotandcuriousbot.onrender.com/{TOKEN}"  # à remplacer par ton URL Render
 
 app = Flask(__name__)
 
