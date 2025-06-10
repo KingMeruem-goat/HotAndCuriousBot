@@ -41,9 +41,7 @@ def send_question(message):
     import random
     level = message.text
     q = random.choice(questions[level])
-    bot.send_message(message.chat.id, f"🃏 *{level}*")
-
-{q}", parse_mode='Markdown')
+    bot.send_message(message.chat.id, f"🃏 *{level}*\n\n{q}", parse_mode='Markdown')
 
 @app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
