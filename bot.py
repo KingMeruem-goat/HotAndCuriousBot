@@ -85,115 +85,75 @@ questions = {
         "Envoie un vocal où tu gémis discrètement pendant 10 secondes.",
         "Fais un strip‑tease d’une pièce à la caméra.",
         "Envoie un selfie à moitié couvert·e (laisse deviner le reste).",
-        "Écris une mini‑histoire érotique avec nos prénoms.",
-        "Envoie un message audio de 20 secondes où tu expliques ce que tu veux me faire.",
-        "Simule un orgasme (avec ou sans caméra).",
-        "Envoie une photo de l’objet que tu utiliserais pour te donner du plaisir.",
-        "Montre ta tenue de “séduction maison” (photo ou cam).",
-        "Donne-moi un gage sexy à faire, et je l’exécuterai aussi.",
-        "Appelle-moi et dis-moi 3 fantasmes que tu veux réaliser avec moi.",
-        "Envoie une capture d’écran de ta dernière recherche coquine sur Google.",
-        "Simule un rendez-vous coquin à distance pendant 1 min en vocal.",
-        "Mets une musique sexy et fais une mini danse pour moi (vidéo/live).",
-        "Envoie un message hot que je devrai lire à haute voix.",
-        "Pendant 5 minutes, réponds à tout ce que je dis avec une voix sensuelle."
+        "Écris une mini‑histoire..."
     ]
 }
 
-# === GESTION DES SESSIONS ===
-waiting = {}       # user_id -> (mode="solo"/"duo", category)
-active = {}        # user_id -> (partner_id_opt, category, index)
+# === STOCKAGE EN MÉMOIRE POUR MULTIJOUEUR ===
+pending_games = {}  # {game_id: {'host': user_id, 'players': [user_id1, user_id2]}}
 
-# === COMMANDE /START ===
-@bot.message_handler(commands=["start"])
-def cmd_start(message):
-    user = message.from_user.id
+# === COMMANDES DE BASE ===
+@bot.message_handler(commands=['start'])
+def handle_start(message):
+    user_id = message.from_user.id
     args = message.text.split()
-    if len(args) > 1:
-        sid = args[1]
-        # Rejoindre session duo
-        for uid, sess in active.items():
-            pass  # n'utilisé : on recrée ci‑dessous
-        if sid in waiting and waiting[sid][0] == "duo":
-            mode, cat = waiting.pop(sid)
-            partner = int(sid)
-            # initialiser sessions actives
-            active[user] = (partner, cat, 0)
-            active[partner] = (user, cat, 0)
-            bot.send_message(user, "✅ Tu as rejoint ! Le jeu commence...")
-            bot.send_message(partner, "✅ Partenaire arrivé ! Lancement...")
-            send_question_to_pair(user, cat, 0)
-            return
-
-    # Sinon : menu principal
-    markup = InlineKeyboardMarkup()
-    markup.row(
-        InlineKeyboardButton("🎲 Solo", callback_data="solo"),
-        InlineKeyboardButton("👥 À deux", callback_data="duo"),
-    )
-    bot.send_message(user, "Mode de jeu ?", reply_markup=markup)
-
-# === CALLBACKS BOUTONS ===
-@bot.callback_query_handler(func=lambda c: True)
-def btn_handler(call):
-    uid = call.from_user.id
-    data = call.data
-
-    if data == "solo":
+    
+    if len(args) > 1 and args[1].startswith("join_"):
+        game_id = args[1].replace("join_", "")
+        if game_id in pending_games and len(pending_games[game_id]['players']) < 2:
+            pending_games[game_id]['players'].append(user_id)
+            bot.send_message(user_id, "Tu as rejoint la partie ! Le jeu va commencer 😏")
+            # Commencer le jeu ici automatiquement
+            start_game(game_id)
+        else:
+            bot.send_message(user_id, "Lien invalide ou partie déjà complète.")
+    else:
         markup = InlineKeyboardMarkup()
-        for cat in questions:
-            markup.add(InlineKeyboardButton(cat, callback_data=f"solo|{cat}"))
-        bot.send_message(uid, "Choisis ton niveau :", reply_markup=markup)
+        markup.row_width = 1
+        markup.add(
+            InlineKeyboardButton("Jouer en solo 🎲", callback_data="solo"),
+            InlineKeyboardButton("Jouer à deux ❤️", callback_data="multiplayer")
+        )
+        bot.send_message(user_id, "Bienvenue dans *Hot & Curious* 🔥\nChoisis un mode :", parse_mode='Markdown', reply_markup=markup)
 
-    elif data == "duo":
-        # mets en attente et envoie lien avec ton user_id
-        waiting[str(uid)] = ("duo", None)
-        link = f"https://t.me/{bot_username}?start={uid}"
-        bot.send_message(uid, f"En attente d'un joueur…\nEnvoie ce lien à quelqu’un :\n{link}")
+# === DÉBUT DE PARTIE MULTIJOUEUR ===
+@bot.callback_query_handler(func=lambda call: call.data == "multiplayer")
+def multiplayer_mode(call):
+    user_id = call.from_user.id
+    game_id = str(user_id)
+    pending_games[game_id] = {'host': user_id, 'players': [user_id]}
+    invite_link = f"https://t.me/{bot_username}?start=join_{game_id}"
+    bot.send_message(user_id, f"Envoie ce lien à ton/ta partenaire pour commencer :\n{invite_link}")
 
-    elif "|" in data:
-        m, cat = data.split("|", 1)
-        if m == "solo":
-            send_question_single(uid, cat)
-        elif m == "duo":
-            # attendre 2ème + lancer partie
-            waiting[str(uid)] = ("duo", cat)
+# === DÉBUT DE PARTIE SOLO ===
+@bot.callback_query_handler(func=lambda call: call.data == "solo")
+def solo_mode(call):
+    user_id = call.from_user.id
+    send_question(user_id)
 
-    elif data == "next":
-        if uid in active:
-            partner, cat, idx = active[uid]
-            idx += 1
-            active[uid] = (partner, cat, idx)
-            active[partner] = (uid, cat, idx)
-            send_question_to_pair(uid, cat, idx)
+# === FONCTION DE LANCEMENT D'UNE PARTIE ===
+def start_game(game_id):
+    players = pending_games[game_id]['players']
+    for player_id in players:
+        send_question(player_id)
 
-def send_question_single(uid, category):
-    q = random.choice(questions[category])
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("Question suivante", callback_data="next"))
-    bot.send_message(uid, f"🎯 {category} :\n{q}", reply_markup=markup)
+# === ENVOI DES QUESTIONS ===
+def send_question(user_id):
+    niveau = random.choice(list(questions.keys()))
+    question = random.choice(questions[niveau])
+    bot.send_message(user_id, f"*{niveau}*\n{question}", parse_mode='Markdown')
 
-def send_question_to_pair(uid, category, idx):
-    q = random.choice(questions[category])
-    partner, _, _ = active[uid]
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("Question suivante", callback_data="next"))
-    bot.send_message(uid, f"🎯 {category} :\n{q}", reply_markup=markup)
-    bot.send_message(partner, f"🎯 {category} :\n{q}", reply_markup=markup)
+# === FLASK WEBHOOK ===
+@app.route(f'/{TOKEN}', methods=['POST'])
+def webhook():
+    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
+    return '', 200
 
-# === Webhook & FLASK ===
-@app.route(f"/{TOKEN}", methods=["POST"])
-def site_webhook():
-    update = telebot.types.Update.de_json(request.data.decode("utf-8"))
-    bot.process_new_updates([update])
-    return "OK", 200
-
-@app.route("/", methods=["GET"])
+@app.route('/')
 def index():
-    return "Bot en ligne 😊", 200
+    return 'Bot en ligne !'
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     bot.remove_webhook()
     bot.set_webhook(url=WEBHOOK_URL)
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
