@@ -151,5 +151,25 @@ def ask_next_question(host_id):
     bot.send_message(player, f"🃏 *{level}*\n\n{q}", parse_mode='Markdown')
     game['turn'] += 1
 
-# Boucle
-bot.infinity_polling()
+# ... tous tes handlers, commandes, jeux, etc.
+
+from flask import Flask, request
+import os
+
+app = Flask(__name__)
+
+@app.route(f'/{TOKEN}', methods=['POST'])
+def receive_update():
+    json_str = request.get_data().decode('UTF-8')
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return 'OK', 200
+
+# Configuration du webhook
+RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://hotandcuriousbot.onrender.com").rstrip('/')
+bot.remove_webhook()
+bot.set_webhook(url=f"{RENDER_URL}/{TOKEN}")
+
+# Démarrage de Flask (serveur web)
+if name == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
