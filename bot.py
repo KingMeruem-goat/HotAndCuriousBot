@@ -1,13 +1,18 @@
+import os
+import random
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-import random
+from flask import Flask, request
 
-# Remplace par ton vrai token ici
-TOKEN = '7771606520:AAFp9ZonHi-MSgi1Jah_M9KmrgGKzH9v_Lk'
-bot = telebot.TeleBot(TOKEN)
+# === CONFIGURATION ===
+TOKEN = "7771606520:AAFp9ZonHi-MSgi1Jah_M9KmrgGKzH9v_Lk"
+bot = telebot.TeleBot(TOKEN, threaded=False)
 bot_username = bot.get_me().username
+WEBHOOK_URL = f"https://hotandcuriousbot.onrender.com/{TOKEN}"  # remplace par ton URL Render
 
-# Structure des questions
+app = Flask(__name__)
+
+# === QUESTIONS PAR NIVEAU ===
 questions = {
     "Icebreaker Fun": [
         "Quel est ton emoji préféré pour draguer ?",
@@ -47,199 +52,148 @@ questions = {
         "Si tu pouvais m’embrasser là tout de suite, tu commencerais par où ?",
         "Si je t’envoie un message “J’ai besoin de toi là, tout de suite”, tu fais quoi ?",
         "Tu préfères qu’on te chuchote des mots doux ou des choses coquines ?",
-        "Que portes-tu généralement quand tu es seul.e à la maison ?",
+        "Que portes-tu généralement quand tu es seul·e à la maison ?",
         "Quel est le plus long message sexy que tu as déjà envoyé ?",
         "Quelle partie de mon corps as-tu le plus envie de découvrir en vrai ?",
-        "Préfères-tu un strip-tease par visio ou un vocal très explicite ?",
+        "Préfères-tu un strip‑tease par visio ou un vocal très explicite ?",
         "Quelle est ta plus grande tentation quand tu me regardes à l’écran ?",
-        "M’enverrais-tu une photo sexy si je te le demande gentiment ?",
-        "Quel mot ou geste de ma part pourrait te rendre fou/folle même à distance ?",
+        "M’enverrais‑tu une photo sexy si je te le demande gentiment ?",
+        "Quel mot ou geste de ma part pourrait te rendre fou/folle à distance ?",
         "T’as déjà fantasmé en plein appel vidéo ?"
     ],
     "Hot & Spicy": [
         "Décris-moi un fantasme qu’on pourrait réaliser même à distance.",
         "Tu m’envoies un vocal en murmurant une envie ?",
-        "Si je te proposais un strip visio à tour de rôle, tu serais partant(e) ?",
-        "Quelle est la chose la plus coquine que tu aies faite au téléphone ou en appel ?",
+        "Si je te proposais un strip visio par tour, tu serais partant·e ?",
+        "Quelle est la chose la plus coquine que tu aies faite au téléphone ?",
         "Quel est ton fantasme le plus réaliste à réaliser en ligne ?",
         "Si je te dis “on fait un jeu coquin par audio ce soir”, tu dis quoi ?",
-        "Quel est le moment de la journée où tu es le plus chaud/chaude ?",
+        "Quel est le moment de la journée où tu es le plus chaud·e ?",
         "As-tu déjà joué avec toi-même en pensant à moi ? Raconte sans tabou.",
-        "Que dirais-tu si je te proposais un appel vidéo torride maintenant ?",
-        "Tu préfères me regarder ou m’écouter pendant un moment très hot ?","Quel est le truc le plus coquin que tu pourrais faire avec un objet près de toi ?",
+        "Que dirais‑tu si je te proposais un appel vidéo torride maintenant ?",
+        "Tu préfères me regarder ou m’écouter pendant un moment très hot ?",
+        "Quel est le truc le plus coquin que tu pourrais faire avec un objet près de toi ?",
         "Tu m’envoies un message audio sexy maintenant ? (ose 😈)",
-        "T’as déjà fantasmé sur ce qu’on ferait si on était dans le même lit ce soir ?",
-        "Envoie-moi une phrase hot que tu voudrais me dire les yeux dans les yeux."
+        "T’as déjà fantasmé sur ce qu’on ferait dans le même lit ?",
+        "Envoie‑moi une phrase hot que tu voudrais me dire les yeux dans les yeux."
     ],
     "Dare Time": [
-        "Envoie une photo d’un endroit de ton corps que j’adore (sans montrer le visage).",
-        "Enregistre un audio très très lent où tu dis ce que tu ferais si j’étais là.",
-        "Vidéo de toi qui dis quelque chose de chaud avec un regard de tueur/tueuse.",
-        "Choisis un mot, et chaque fois que tu l’entends aujourd’hui, tu penses à moi tout nu(e).",
+        "Envoie une photo d’un endroit de ton corps que j’adore (sans visage).",
+        "Enregistre un audio très lent où tu dis ce que tu ferais si j’étais là.",
+        "Vidéo : dis quelque chose de chaud avec un regard de tueur·euse.",
+        "Choisis un mot, et chaque fois que tu l’entends aujourd’hui, pense à moi nu·e.",
         "Envoie un vocal où tu gémis discrètement pendant 10 secondes.",
-        "Fais un strip-tease d’une pièce (ou deux) à la caméra.",
-        "Envoie un selfie à moitié couvert.e (laisse deviner le reste).",
-        "Écris une mini-histoire érotique avec nos deux prénoms.",
+        "Fais un strip‑tease d’une pièce à la caméra.",
+        "Envoie un selfie à moitié couvert·e (laisse deviner le reste).",
+        "Écris une mini‑histoire érotique avec nos prénoms.",
         "Envoie un message audio de 20 secondes où tu expliques ce que tu veux me faire.",
         "Simule un orgasme (avec ou sans caméra).",
-        "Envoie-moi la photo de l’objet que tu utiliserais pour te donner du plaisir.",
-        "Montre-moi (en photo ou en cam) ta tenue de “séduction maison”.",
-        "Donne-moi un gage sexy à faire, et je dois l’exécuter aussi.",
+        "Envoie une photo de l’objet que tu utiliserais pour te donner du plaisir.",
+        "Montre ta tenue de “séduction maison” (photo ou cam).",
+        "Donne-moi un gage sexy à faire, et je l’exécuterai aussi.",
         "Appelle-moi et dis-moi 3 fantasmes que tu veux réaliser avec moi.",
-        "Envoie-moi une capture d’écran de ta dernière recherche coquine sur Google.",
-        "Simule un rendez-vous coquin à distance pendant 1 minute en vocal.",
-        "Mets une musique sexy et fais une mini danse pour moi (vidéo ou live).",
-        "Envoie-moi un message hot que je devrais lire tout haut devant toi.",
-        "Pendant les 5 prochaines minutes, réponds à tout ce que je dis avec une voix sensuelle."
+        "Envoie une capture d’écran de ta dernière recherche coquine sur Google.",
+        "Simule un rendez-vous coquin à distance pendant 1 min en vocal.",
+        "Mets une musique sexy et fais une mini danse pour moi (vidéo/live).",
+        "Envoie un message hot que je devrai lire à haute voix.",
+        "Pendant 5 minutes, réponds à tout ce que je dis avec une voix sensuelle."
     ]
 }
 
-# Stockage des parties
-games = {}
+# === GESTION DES SESSIONS ===
+waiting = {}       # user_id -> (mode="solo"/"duo", category)
+active = {}        # user_id -> (partner_id_opt, category, index)
 
-# Start
-@bot.message_handler(commands=['start'])
-def handle_start(message):
-    keyboard = InlineKeyboardMarkup()
-    keyboard.add(
-        InlineKeyboardButton("Jouer en solo", callback_data="solo"),
-        InlineKeyboardButton("Inviter un.e partenaire ❤️", switch_inline_query="invite")
-    )
-    
-    bot.send_message(
-        message.chat.id,
-        "👋 Bienvenue dans le jeu de flirt ! Choisis ton mode de jeu :",
-        reply_markup=keyboard
-    )
-    
-    # Si l'utilisateur a été invité via un lien avec un paramètre ?start=join_HOSTID
-    if len(args) > 1 and args[1].startswith("join_"):
-        host_id = args[1][5:]
-
-        if host_id in games:
-            game = games[host_id]
-            if user_id not in game["players"]:
-                game["players"].append(user_id)
-                games[user_id] = game  # Associer aussi ce joueur à la même instance de jeu
-                bot.send_message(chat_id, "🎮 Tu as rejoint une partie multijoueur avec succès ! En attente de l’hôte...")
-                bot.send_message(int(host_id), f"✅ {message.from_user.first_name} a rejoint la partie ! La partie peut commencer.")
-                
-                # Optionnel : Démarrer la partie dès qu'il y a 2 joueurs
-                if len(game["players"]) >= 2:
-                    start_game_multiplayer(host_id)
-            else:
-                bot.send_message(chat_id, "⚠️ Tu es déjà dans cette partie.")
-        else:
-            bot.send_message(chat_id, "❌ Cette partie n’existe plus ou a expiré.")
-        return
-
-    # Sinon, démarrage normal (solo ou création de partie multi)
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("🎲 Jouer en solo", "👥 Jouer à deux")
-    bot.send_message(chat_id, "Bienvenue dans le jeu de flirt 😏 Choisis un mode :", reply_markup=markup)
-
-# Choix de mode
-@bot.callback_query_handler(func=lambda call: True)
-def handle_callback(call):
-    user_id = call.from_user.id
-    chat_id = call.message.chat.id
-
-    if call.data.startswith("niveau_"):
-        niveau = call.data.split("_")[1]
-        if user_id in games:
-            games[user_id]['niveau'] = niveau
-            if games[user_id]['mode'] == "solo":
-                games[user_id]['players'] = [user_id]
-                games[user_id]['turn'] = 0
-                send_question(chat_id, user_id)
-            elif games[user_id]['mode'] == "multi":
-                invitation_link = f"https://t.me/{hotcurious_bot}?start=join_{user_id}"
-                bot.send_message(chat_id, f"Partage ce lien avec ton partenaire pour commencer :\n{invitation_link}")
-
-    elif call.data.startswith("join_"):
-        host_id = int(call.data.split("_")[1])
-        if host_id in games and games[host_id]['mode'] == "multi":
-            if user_id not in games[host_id]['players']:
-                games[host_id]['players'].append(user_id)
-                games[host_id]['turn'] = 0
-                guest_id = user_id
-                host_chat_id = games[host_id]['chat_id']
-                bot.send_message(host_chat_id, "Ton partenaire a rejoint la partie !")
-                bot.send_message(chat_id, "Tu as rejoint la partie !")
-                send_question(host_chat_id, host_id)
-            else:
-                bot.send_message(chat_id, "Tu es déjà dans cette partie.")
-
-    elif call.data in questions:
-        # Récupère le jeu actif de l'utilisateur
-        for host_id, game in games.items():
-            if user_id in game['players']:
-                break
-        else:
-            return  # Aucun jeu trouvé
-
-        niveau = game['niveau']
-        if call.data in questions[niveau]:
-            reponses_possibles = reponses[niveau].get(call.data, [])
-            texte_question = questions[niveau][call.data]
-            question_keyboard = types.InlineKeyboardMarkup()
-            for rep in reponses_possibles:
-                question_keyboard.add(types.InlineKeyboardButton(rep, callback_data=rep))
-            bot.send_message(chat_id, f"{texte_question}", reply_markup=question_keyboard)
-
-def choose_level(msg, chat_id):
-    markup = InlineKeyboardMarkup()
-    for level in questions:
-        markup.add(InlineKeyboardButton(level, callback_data=level))
-    bot.send_message(chat_id, "🧩 Choisis ton niveau :", reply_markup=markup)
-
-@bot.message_handler(commands=['start'])
-def handle_join(message):
+# === COMMANDE /START ===
+@bot.message_handler(commands=["start"])
+def cmd_start(message):
+    user = message.from_user.id
     args = message.text.split()
     if len(args) > 1:
-        host_id = int(args[1])
-        if host_id in games:
-            games[host_id]['players'].append(message.chat.id)
-            bot.send_message(message.chat.id, "Tu as rejoint la partie ! 🎉")
-            start_multiplayer_game(host_id)
-        else:
-            bot.send_message(message.chat.id, "Lien invalide ou expiré.")
-    else:
-        start_game(message)
+        sid = args[1]
+        # Rejoindre session duo
+        for uid, sess in active.items():
+            pass  # n'utilisé : on recrée ci‑dessous
+        if sid in waiting and waiting[sid][0] == "duo":
+            mode, cat = waiting.pop(sid)
+            partner = int(sid)
+            # initialiser sessions actives
+            active[user] = (partner, cat, 0)
+            active[partner] = (user, cat, 0)
+            bot.send_message(user, "✅ Tu as rejoint ! Le jeu commence...")
+            bot.send_message(partner, "✅ Partenaire arrivé ! Lancement...")
+            send_question_to_pair(user, cat, 0)
+            return
 
-def start_multiplayer_game(host_id):
-    players = games[host_id]['players']
-    for pid in players:
-        bot.send_message(pid, "🎮 La partie commence ! On pioche une carte à tour de rôle.")
-    ask_next_question(host_id)
+    # Sinon : menu principal
+    markup = InlineKeyboardMarkup()
+    markup.row(
+        InlineKeyboardButton("🎲 Solo", callback_data="solo"),
+        InlineKeyboardButton("👥 À deux", callback_data="duo"),
+    )
+    bot.send_message(user, "Mode de jeu ?", reply_markup=markup)
 
-def ask_next_question(host_id):
-    game = games[host_id]
-    player = game['players'][game['turn'] % len(game['players'])]
-    level = random.choice(list(questions.keys()))
-    q = random.choice(questions[level])
-    bot.send_message(player, f"🃏 *{level}*\n\n{q}", parse_mode='Markdown')
-    game['turn'] += 1
+# === CALLBACKS BOUTONS ===
+@bot.callback_query_handler(func=lambda c: True)
+def btn_handler(call):
+    uid = call.from_user.id
+    data = call.data
 
-# ... tous tes handlers, commandes, jeux, etc.
+    if data == "solo":
+        markup = InlineKeyboardMarkup()
+        for cat in questions:
+            markup.add(InlineKeyboardButton(cat, callback_data=f"solo|{cat}"))
+        bot.send_message(uid, "Choisis ton niveau :", reply_markup=markup)
 
-from flask import Flask, request
-import os
+    elif data == "duo":
+        # mets en attente et envoie lien avec ton user_id
+        waiting[str(uid)] = ("duo", None)
+        link = f"https://t.me/{bot_username}?start={uid}"
+        bot.send_message(uid, f"En attente d'un joueur…\nEnvoie ce lien à quelqu’un :\n{link}")
 
-app = Flask(__name__)
+    elif "|" in data:
+        m, cat = data.split("|", 1)
+        if m == "solo":
+            send_question_single(uid, cat)
+        elif m == "duo":
+            # attendre 2ème + lancer partie
+            waiting[str(uid)] = ("duo", cat)
 
-@app.route(f'/{TOKEN}', methods=['POST'])
-def receive_update():
-    json_str = request.get_data().decode('UTF-8')
-    update = telebot.types.Update.de_json(json_str)
+    elif data == "next":
+        if uid in active:
+            partner, cat, idx = active[uid]
+            idx += 1
+            active[uid] = (partner, cat, idx)
+            active[partner] = (uid, cat, idx)
+            send_question_to_pair(uid, cat, idx)
+
+def send_question_single(uid, category):
+    q = random.choice(questions[category])
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("Question suivante", callback_data="next"))
+    bot.send_message(uid, f"🎯 {category} :\n{q}", reply_markup=markup)
+
+def send_question_to_pair(uid, category, idx):
+    q = random.choice(questions[category])
+    partner, _, _ = active[uid]
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("Question suivante", callback_data="next"))
+    bot.send_message(uid, f"🎯 {category} :\n{q}", reply_markup=markup)
+    bot.send_message(partner, f"🎯 {category} :\n{q}", reply_markup=markup)
+
+# === Webhook & FLASK ===
+@app.route(f"/{TOKEN}", methods=["POST"])
+def site_webhook():
+    update = telebot.types.Update.de_json(request.data.decode("utf-8"))
     bot.process_new_updates([update])
-    return 'OK', 200
+    return "OK", 200
 
-# Configuration du webhook
-RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://hotandcuriousbot.onrender.com").rstrip('/')
-bot.remove_webhook()
-bot.set_webhook(url=f"{RENDER_URL}/{TOKEN}")
+@app.route("/", methods=["GET"])
+def index():
+    return "Bot en ligne 😊", 200
 
-# Démarrage de Flask (serveur web)
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    bot.remove_webhook()
+    bot.set_webhook(url=WEBHOOK_URL)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
