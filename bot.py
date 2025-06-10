@@ -5,6 +5,7 @@ import random
 # Remplace par ton vrai token ici
 TOKEN = '7771606520:AAFp9ZonHi-MSgi1Jah_M9KmrgGKzH9v_Lk'
 bot = telebot.TeleBot(TOKEN)
+bot_username = bot.get_me().username
 
 # Structure des questions
 questions = {
