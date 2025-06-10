@@ -98,21 +98,57 @@ games = {}
 
 # Start
 @bot.message_handler(commands=['start'])
-def start_game(message):
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("👤 Solo", callback_data='solo'))
-    markup.add(InlineKeyboardButton("👥 Multijoueur", callback_data='multi'))
-    bot.send_message(message.chat.id, "Bienvenue dans *Hot & Curious* 🔥\n\nChoisis ton mode de jeu :", reply_markup=markup, parse_mode='Markdown')
+def handle_start(message):
+    chat_id = message.chat.id
+    user_id = str(chat_id)
+    args = message.text.split()
+    
+    # Si l'utilisateur a été invité via un lien avec un paramètre ?start=join_HOSTID
+    if len(args) > 1 and args[1].startswith("join_"):
+        host_id = args[1][5:]
+
+        if host_id in games:
+            game = games[host_id]
+            if user_id not in game["players"]:
+                game["players"].append(user_id)
+                games[user_id] = game  # Associer aussi ce joueur à la même instance de jeu
+                bot.send_message(chat_id, "🎮 Tu as rejoint une partie multijoueur avec succès ! En attente de l’hôte...")
+                bot.send_message(int(host_id), f"✅ {message.from_user.first_name} a rejoint la partie ! La partie peut commencer.")
+                
+                # Optionnel : Démarrer la partie dès qu'il y a 2 joueurs
+                if len(game["players"]) >= 2:
+                    start_game_multiplayer(host_id)
+            else:
+                bot.send_message(chat_id, "⚠️ Tu es déjà dans cette partie.")
+        else:
+            bot.send_message(chat_id, "❌ Cette partie n’existe plus ou a expiré.")
+        return
+
+    # Sinon, démarrage normal (solo ou création de partie multi)
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("🎲 Jouer en solo", "👥 Jouer à deux")
+    bot.send_message(chat_id, "Bienvenue dans le jeu de flirt 😏 Choisis un mode :", reply_markup=markup)
 
 # Choix de mode
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     if call.data == 'solo':
         choose_level(call.message, call.message.chat.id)
-    elif call.data == 'multi':
-        games[call.message.chat.id] = {'players': [call.message.chat.id], 'turn': 0}
-        bot.send_message(call.message.chat.id, "🔗 Envoie ce message à ton/ta partenaire pour qu’il/elle clique dessus et rejoigne :")
-        bot.send_message(call.message.chat.id, f"https://t.me/{bot.get_me().username}?start={call.message.chat.id}")
+    elif message.text == "👥 Jouer à deux":
+    games[user_id] = {
+        "players": [user_id],
+        "turn": 0,
+        "questions": [],
+        "level": 1,
+        "mode": "multi"
+    }
+
+    invite_link = f"https://t.me/{hotcurious_bot}?start=join_{user_id}"
+    markup = types.InlineKeyboardMarkup()
+    button = types.InlineKeyboardButton("🔗 Inviter ton/ta partenaire", url=invite_link)
+    markup.add(button)
+
+    bot.send_message(chat_id, "Envoie ce lien à ton/ta partenaire pour qu’il/elle rejoigne la partie :", reply_markup=markup)
     elif call.data in questions:
         q = random.choice(questions[call.data])
         bot.send_message(call.message.chat.id, f"🃏 *{call.data}*\n\n{q}", parse_mode='Markdown')
