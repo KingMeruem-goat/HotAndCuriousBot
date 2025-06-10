@@ -100,9 +100,17 @@ games = {}
 # Start
 @bot.message_handler(commands=['start'])
 def handle_start(message):
-    chat_id = message.chat.id
-    user_id = str(chat_id)
-    args = message.text.split()
+    keyboard = InlineKeyboardMarkup()
+    keyboard.add(
+        InlineKeyboardButton("Jouer en solo", callback_data="solo"),
+        InlineKeyboardButton("Inviter un.e partenaire ❤️", switch_inline_query="invite")
+    )
+    
+    bot.send_message(
+        message.chat.id,
+        "👋 Bienvenue dans le jeu de flirt ! Choisis ton mode de jeu :",
+        reply_markup=keyboard
+    )
     
     # Si l'utilisateur a été invité via un lien avec un paramètre ?start=join_HOSTID
     if len(args) > 1 and args[1].startswith("join_"):
