@@ -41,7 +41,7 @@ def send_question(message):
     import random
     level = message.text
     q = random.choice(questions[level])
-    bot.send_message(message.chat.id, f"🃏 *{level}*')
+    bot.send_message(message.chat.id, f"🃏 *{level}*")
 
 {q}", parse_mode='Markdown')
 
