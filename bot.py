@@ -144,7 +144,8 @@ def start_multiplayer_game(host_id):
     ask_next_question(host_id)
 
 def ask_next_question(host_id):
-    game = games[host_id]player = game['players'][game['turn'] % len(game['players'])]
+    game = games[host_id]
+    player = game['players'][game['turn'] % len(game['players'])]
     level = random.choice(list(questions.keys()))
     q = random.choice(questions[level])
     bot.send_message(player, f"🃏 *{level}*\n\n{q}", parse_mode='Markdown')
