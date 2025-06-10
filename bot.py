@@ -131,27 +131,52 @@ def handle_start(message):
 
 # Choix de mode
 @bot.callback_query_handler(func=lambda call: True)
-def callback_handler(call):
-    if call.data == 'solo':
-        choose_level(call.message, call.message.chat.id)
-    elif message.text == "👥 Jouer à deux":    
-        games[user_id] = {
-        "players": [user_id],
-        "turn": 0,
-        "questions": [],
-        "level": 1,
-        "mode": "multi"
-    }
+def handle_callback(call):
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
 
-    invite_link = f"https://t.me/{hotcurious_bot}?start=join_{user_id}"
-    markup = types.InlineKeyboardMarkup()
-    button = types.InlineKeyboardButton("🔗 Inviter ton/ta partenaire", url=invite_link)
-    markup.add(button)
+    if call.data.startswith("niveau_"):
+        niveau = call.data.split("_")[1]
+        if user_id in games:
+            games[user_id]['niveau'] = niveau
+            if games[user_id]['mode'] == "solo":
+                games[user_id]['players'] = [user_id]
+                games[user_id]['turn'] = 0
+                send_question(chat_id, user_id)
+            elif games[user_id]['mode'] == "multi":
+                invitation_link = f"https://t.me/{hotcurious_bot}?start=join_{user_id}"
+                bot.send_message(chat_id, f"Partage ce lien avec ton partenaire pour commencer :\n{invitation_link}")
 
-    bot.send_message(chat_id, "Envoie ce lien à ton/ta partenaire pour qu’il/elle rejoigne la partie :", reply_markup=markup)
+    elif call.data.startswith("join_"):
+        host_id = int(call.data.split("_")[1])
+        if host_id in games and games[host_id]['mode'] == "multi":
+            if user_id not in games[host_id]['players']:
+                games[host_id]['players'].append(user_id)
+                games[host_id]['turn'] = 0
+                guest_id = user_id
+                host_chat_id = games[host_id]['chat_id']
+                bot.send_message(host_chat_id, "Ton partenaire a rejoint la partie !")
+                bot.send_message(chat_id, "Tu as rejoint la partie !")
+                send_question(host_chat_id, host_id)
+            else:
+                bot.send_message(chat_id, "Tu es déjà dans cette partie.")
+
     elif call.data in questions:
-        q = random.choice(questions[call.data])
-        bot.send_message(call.message.chat.id, f"🃏 *{call.data}*\n\n{q}", parse_mode='Markdown')
+        # Récupère le jeu actif de l'utilisateur
+        for host_id, game in games.items():
+            if user_id in game['players']:
+                break
+        else:
+            return  # Aucun jeu trouvé
+
+        niveau = game['niveau']
+        if call.data in questions[niveau]:
+            reponses_possibles = reponses[niveau].get(call.data, [])
+            texte_question = questions[niveau][call.data]
+            question_keyboard = types.InlineKeyboardMarkup()
+            for rep in reponses_possibles:
+                question_keyboard.add(types.InlineKeyboardButton(rep, callback_data=rep))
+            bot.send_message(chat_id, f"{texte_question}", reply_markup=question_keyboard)
 
 def choose_level(msg, chat_id):
     markup = InlineKeyboardMarkup()
