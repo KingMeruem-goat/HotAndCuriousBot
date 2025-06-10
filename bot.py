@@ -171,5 +171,5 @@ bot.remove_webhook()
 bot.set_webhook(url=f"{RENDER_URL}/{TOKEN}")
 
 # Démarrage de Flask (serveur web)
-if name == "__main__":
+if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
