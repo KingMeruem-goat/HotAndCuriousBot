@@ -8,7 +8,7 @@ from flask import Flask, request
 TOKEN = "7771606520:AAFp9ZonHi-MSgi1Jah_M9KmrgGKzH9v_Lk"
 bot = telebot.TeleBot(TOKEN, threaded=False)
 bot_username = bot.get_me().username
-WEBHOOK_URL = f"https://hotandcuriousbot.onrender.com/{TOKEN}"  # Replace with your Render URL
+WEBHOOK_URL = f"https://hotandcuriousbot.onrender.com/{TOKEN}"
 
 app = Flask(__name__)
 
@@ -127,7 +127,7 @@ def handle_start(message):
     user_id = message.from_user.id
     args = message.text.split()
     
-    if len(args) >= 1 and args[1].startswith("join_"):
+    if len(args) > 1 and args[1].startswith("join_"):
         game_id = args[1].replace("join_", "")
         if game_id in pending_games and len(pending_games[game_id]['players']) < 2:
             pending_games[game_id]['players'].append(user_id)
