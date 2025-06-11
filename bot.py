@@ -53,7 +53,7 @@ questions = {
         "Si je t’envoie un message “J’ai besoin de toi là, tout de suite”, tu fais quoi ?",
         "Tu préfères qu’on te chuchote des mots doux ou des choses coquines ?",
         "Que portes-tu généralement quand tu es seul·e à la maison ?",
-        "Quel est le plus long message sexy que tu as déjà envoyé ?",
+        "Quel est le plus long message sexy que tu has déjà envoyé ?",
         "Quelle partie de mon corps as-tu le plus envie de découvrir en vrai ?",
         "Préfères-tu un strip‑tease par visio ou un vocal très explicite ?",
         "Quelle est ta plus grande tentation quand tu me regardes à l’écran ?",
@@ -130,29 +130,33 @@ def handle_start(message):
     if len(args) > 1 and args[1].startswith("join_"):
         game_id = args[1].replace("join_", "")
         print(f"Join attempt: user_id={user_id}, game_id={game_id}, pending_games={pending_games}")  # Debug log
-        if game_id in pending_games and len(pending_games[game_id]['players']) < 2:
-            if user_id == pending_games[game_id]['host']:
-                bot.send_message(user_id, "Tu es déjà l'hôte de cette partie ! Attends ton partenaire.")
-                return
-            pending_games[game_id]['players'].append(user_id)
-            bot.send_message(user_id, "Tu as rejoint la partie ! En attente du host pour commencer 😏")
-            bot.send_message(
-                pending_games[game_id]['host'], 
-                "Ton partenaire a rejoint ! Clique pour démarrer la partie :",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton("Démarrer la partie", callback_data=f"start_game_{game_id}")]
-                ])
-            )
-        else:
-            bot.send_message(user_id, f"Lien invalide ou partie complète. game_id={game_id}, exists={game_id in pending_games}, players={pending_games.get(game_id, {}).get('players', [])}")
-    else:
-        markup = InlineKeyboardMarkup()
-        markup.row_width = 1
-        markup.add(
-            InlineKeyboardButton("Jouer en solo 🎲", callback_data="solo"),
-            InlineKeyboardButton("Jouer à deux ❤️", callback_data="multiplayer")
+        if game_id not in pending_games:
+            bot.send_message(user_id, f"Lien invalide : partie introuvable. game_id={game_id}")
+            return
+        if len(pending_games[game_id]['players']) >= 2:
+            bot.send_message(user_id, f"Partie complète. game_id={game_id}, players={pending_games[game_id]['players']}")
+            return
+        if user_id == pending_games[game_id]['host']:
+            bot.send_message(user_id, "Tu es déjà l'hôte de cette partie ! Attends ton partenaire.")
+            return
+        pending_games[game_id]['players'].append(user_id)
+        bot.send_message(user_id, "Tu as rejoint la partie ! En attente du host pour commencer 😏")
+        bot.send_message(
+            pending_games[game_id]['host'], 
+            "Ton partenaire a rejoint ! Clique pour démarrer la partie :",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton("Démarrer la partie", callback_data=f"start_game_{game_id}")]
+            ])
         )
-        bot.send_message(user_id, "Bienvenue dans *Hot & Curious* 🔥\nChoisis un mode :", parse_mode='Markdown', reply_markup=markup)
+        return
+    
+    markup = InlineKeyboardMarkup()
+    markup.row_width = 1
+    markup.add(
+        InlineKeyboardButton("Jouer en solo 🎲", callback_data="solo"),
+        InlineKeyboardButton("Jouer à deux 👥", callback_data="multiplayer")
+    )
+    bot.send_message(user_id, "Bienvenue dans *Hot & Curious* 🔥\nChoisis un mode :", parse_mode='Markdown', reply_markup=markup)
 
 # === DÉBUT DE PARTIE MULTIJOUEUR ===
 @bot.callback_query_handler(func=lambda call: call.data == "multiplayer")
@@ -287,7 +291,7 @@ def solo_mode(call):
     bot.send_message(user_id, "Choisis un niveau pour ta question :", reply_markup=markup)
     bot.answer_callback_query(call.id)
 
-# === SÉLECTION DE NIVEAU SOLO ===
+# === SÉLECTION DEUX NIVEAUX SOLO ===
 @bot.callback_query_handler(func=lambda call: call.data.startswith("solo_category_"))
 def select_solo_category(call):
     user_id = call.from_user.id
@@ -299,14 +303,14 @@ def select_solo_category(call):
     bot.send_message(user_id, f"*{category}*\n{question}", parse_mode='Markdown')
     # Allow another question
     markup = InlineKeyboardMarkup()
-    markup.row_width = 1
+    markup.row_width = 2
     for cat in questions.keys():
         markup.add(InlineKeyboardButton(cat, callback_data=f"solo_category_{cat}"))
     bot.send_message(user_id, "Choisis un autre niveau pour une nouvelle question :", reply_markup=markup)
     bot.answer_callback_query(call.id)
 
 # === FLASK WEBHOOK ===
-@app.route(f'/{TOKEN}', methods=['POST'])
+@app.route(f"/{TOKEN}", methods=['POST'])
 def webhook():
     bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
     return '', 200
@@ -315,7 +319,7 @@ def webhook():
 def index():
     return 'Bot en ligne !'
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     bot.remove_webhook()
     bot.set_webhook(url=WEBHOOK_URL)
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
