@@ -8,7 +8,7 @@ from flask import Flask, request
 TOKEN = "7771606520:AAFp9ZonHi-MSgi1Jah_M9KmrgGKzH9v_Lk"
 bot = telebot.TeleBot(TOKEN, threaded=False)
 bot_username = bot.get_me().username
-WEBHOOK_URL = f"https://hotandcuriousbot.onrender.com/{TOKEN}"  # Replace with your Render URL
+WEBHOOK_URL = f"https://TON-NOM-RENDER.onrender.com/{TOKEN}"  # Replace with your Render URL
 
 app = Flask(__name__)
 
@@ -91,13 +91,12 @@ questions = {
 
 # === GAME STATE STORAGE ===
 pending_games = {}  # game_id: {
-  #   'host': user_id,
-  #   'players': [user_id1, user_id2],
-  #   'current_turn': user_id (who chooses the question),
-  #   'messages': [(chat_id, message_id), ...],
-  #   'active': True/False
-  # }
-}
+                   #   'host': user_id,
+                   #   'players': [user_id1, user_id2],
+                   #   'current_turn': int (index of player choosing question),
+                   #   'messages': [(chat_id, message_id), ...],
+                   #   'active': True/False
+                   # }
 
 # === UTILITY FUNCTIONS ===
 def create_category_menu():
@@ -105,58 +104,54 @@ def create_category_menu():
     markup.row_width = 1
     for category in questions.keys():
         markup.add(InlineKeyboardButton(category, callback_data=f"category_{category}"))
-        markup.add(
-        InlineKeyboardButton("Fin de partie", callback_data="end_game")
-    )
+    markup.add(InlineKeyboardButton("Fin de partie", callback_data="end_game"))
     return markup
 
 def create_end_game_button():
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardMarkup(
-        InlineKeyboardButton("Endgame", callback_data="end_game"))
+    markup.add(InlineKeyboardButton("Fin de partie", callback_data="end_game"))
     return markup
-    return
 
 def delete_game_messages(game_id):
     if game_id in pending_games:
         for chat_id, message_id in pending_games[game_id]['messages']:
             try:
-                try
-                bot.delete_message(chat_id)
+                bot.delete_message(chat_id, message_id)
             except:
                 pass
-        pending_games[game_id]
+        del pending_games[game_id]
 
 # === COMMANDES DE BASE ===
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     user_id = message.from_user.id
-    args = message.text().split()
+    args = message.text.split()
     
-    if len(args) => 1 and args[1].startswith("join_"):
-        game_id = args[1].replace("join_", "" , "")
+    if len(args) >= 1 and args[1].startswith("join_"):
+        game_id = args[1].replace("join_", "")
         if game_id in pending_games and len(pending_games[game_id]['players']) < 2:
             pending_games[game_id]['players'].append(user_id)
-            bot.send_message(user_id, "Tu as rejoint la partie ! En attente du host pour commencer 😏.")
+            bot.send_message(user_id, "Tu as rejoint la partie ! En attente du host pour commencer 😏")
             bot.send_message(
                 pending_games[game_id]['host'], 
                 "Ton partenaire a rejoint ! Clique pour démarrer la partie :",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton("Démarrer la partie", callback_data=f"start_game_{game_id}")]
                 ])
-            else:
-                bot.send_message(user_id, "Lien invalide ou partie déjà complet.")
-        else:
-            markup = InlineKeyboardMarkup()
-            markup.row_width = 1
-            markup.add(
-                InlineKeyboardButton("Jouer en solo 🎲", callback_data="solo"),
-                InlineKeyboardButton("One à deux ❤️", callback_data="multiplayer")
             )
-            bot.send_message(user_id, "Bienvenue dans *Hot && Curious* 🔥\nChoisis un mode jeu :", parse_mode='Markdown', reply_markup=markup)
+        else:
+            bot.send_message(user_id, "Lien invalide ou partie déjà complète.")
+    else:
+        markup = InlineKeyboardMarkup()
+        markup.row_width = 1
+        markup.add(
+            InlineKeyboardButton("Jouer en solo 🎲", callback_data="solo"),
+            InlineKeyboardButton("Jouer à deux ❤️", callback_data="multiplayer")
+        )
+        bot.send_message(user_id, "Bienvenue dans *Hot & Curious* 🔥\nChoisis un mode :", parse_mode='Markdown', reply_markup=markup)
 
-# === DÉBUT DE PARTITION MULTIJOUEUR ===
-@bot.callback_query_handler(func=lambda call): call.data == "multiplayer")
+# === DÉBUT DE PARTIE MULTIJOUEUR ===
+@bot.callback_query_handler(func=lambda call: call.data == "multiplayer")
 def multiplayer_mode(call):
     user_id = call.from_user.id
     game_id = str(user_id)
@@ -167,11 +162,11 @@ def multiplayer_mode(call):
         'messages': [],
         'active': False
     }
-    invite_link = f"https://t.me/{bot_username}?start=join_multiplayer{game_id}"
+    invite_link = f"https://t.me/{bot_username}?start=join_{game_id}"
     bot.send_message(user_id, f"Envoie ce lien à ton/ta partenaire pour commencer :\n{invite_link}")
 
 # === START MULTIPLAYER GAME ===
-@bot.callback_query_handler(func=lambda call): call.data.startswith("start_game_"))
+@bot.callback_query_handler(func=lambda call: call.data.startswith("start_game_"))
 def start_multiplayer_game(call):
     user_id = call.from_user.id
     game_id = call.data.split("_")[2]
@@ -194,7 +189,7 @@ def start_multiplayer_game(call):
     bot.answer_callback_query(call.id)
 
 # === SÉLECTION DE CATÉGORIE ===
-@bot.callback_query_handler(func=lambda call): call.data.startswith("category_"))
+@bot.callback_query_handler(func=lambda call: call.data.startswith("category_"))
 def select_category(call):
     user_id = call.from_user.id
     game_id = None
@@ -233,7 +228,7 @@ def select_category(call):
         )
         game['messages'].append((player_id, msg.message_id))
     
-    # Prompt responder to answer (optional, for tracking response)
+    # Prompt responder to answer
     bot.send_message(responder_id, "Envoie ta réponse dans le chat !")
     
     # Update turn
@@ -251,8 +246,8 @@ def select_category(call):
     bot.answer_callback_query(call.id)
 
 # === FIN DE PARTIE ===
-@bot.callback_query_handler(func=lambda call): call.data == "end_game")
-def multiplayer_game(call):
+@bot.callback_query_handler(func=lambda call: call.data == "end_game")
+def end_game(call):
     user_id = call.from_user.id
     game_id = None
     for gid, game in pending_games.items():
@@ -267,14 +262,17 @@ def multiplayer_game(call):
     # Notify players
     for player_id in pending_games[game_id]['players']:
         msg = bot.send_message(player_id, "Partie terminée ! À bientôt pour un autre round 🔥")
-        bot.delete_message(player_id, msg.message_id, timeout=30)  # Auto-delete after 30s
+        try:
+            bot.delete_message(player_id, msg.message_id)
+        except:
+            pass
     
     # Delete messages
     delete_game_messages(game_id)
     bot.answer_callback_query(call.id)
 
 # === DÉBUT DE PARTIE SOLO ===
-@bot.callback_query_handler(func=lambda call): call.data == "solo")
+@bot.callback_query_handler(func=lambda call: call.data == "solo")
 def solo_mode(call):
     user_id = call.from_user.id
     send_question(user_id)
@@ -288,7 +286,7 @@ def send_question(user_id):
 # === FLASK WEBHOOK ===
 @app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
-    bot.process_new_updates([telebot.types.Update.de_json(request.get_data().decode("utf-8"))]))
+    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
     return '', 200
 
 @app.route('/')
@@ -298,4 +296,4 @@ def index():
 if __name__ == '__main__':
     bot.remove_webhook()
     bot.set_webhook(url=WEBHOOK_URL)
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
