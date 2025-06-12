@@ -17,14 +17,14 @@ questions = {
     "Icebreaker Fun": [
         "Quel est ton emoji préféré pour draguer ?",
         "Si on devait avoir un nom d’équipe, ce serait quoi ?",
-        "Si tu devais m’envoyer un seul mème pour résumer notre relation, ce serait lequel ?",
+        "Si tu devais m’envoyer un seul mème pour résumer notre relation, signe !",
         "Est-ce que tu chantes sous la douche ? Preuve audio ?",
-        "Quelle est ta pire gaffe en visio ou appel vocal ?",
+        "Quelle est ta pire gaffe en visio ou en appel audio ?",
         "Si tu pouvais dîner avec un personnage fictif, ce serait qui ?",
-        "As-tu un surnom marrant ou gênant que tu n’aimes pas trop ?",
-        "Tu préfères avoir des doigts en spaghetti ou des jambes en mousse ?",
-        "Quelle chanson te donne instantanément la pêche ?",
-        "Envoie un selfie avec la tête que tu fais quand tu veux séduire (si t’oses 😏).",
+        "As-tu un surnom marrant ou gênant qui te signe ?",
+        "Tu préfères avoir des doigts en spaghetti ou des jambes ?",
+        "Quelle chanson ?",
+        "Envoie un selfie qui te fait signe quand tu veux viser (si t’aise 😏).",
         "Quelle est l’émoticône que tu utilises trop souvent ?",
         "À quelle heure de la journée es-tu au top de ta forme ?",
         "Tu es plutôt “je parle trop” ou “je réponds en 3 mots” en couple à distance ?"
@@ -53,7 +53,7 @@ questions = {
         "Si je t’envoie un message “J’ai besoin de toi là, tout de suite”, tu fais quoi ?",
         "Tu préfères qu’on te chuchote des mots doux ou des choses coquines ?",
         "Que portes-tu généralement quand tu es seul·e à la maison ?",
-        "Quel est le plus long message sexy que tu has déjà envoyé ?",
+        "Quel est le plus long message sexy que tu as déjà envoyé ?",
         "Quelle partie de mon corps as-tu le plus envie de découvrir en vrai ?",
         "Préfères-tu un strip‑tease par visio ou un vocal très explicite ?",
         "Quelle est ta plus grande tentation quand tu me regardes à l’écran ?",
@@ -133,6 +133,9 @@ def handle_start(message):
         if game_id not in pending_games:
             bot.send_message(user_id, f"Lien invalide : partie introuvable. game_id={game_id}")
             return
+        if user_id in pending_games[game_id]['players']:
+            bot.send_message(user_id, "Tu es déjà dans cette partie ! Attends le démarrage.")
+            return
         if len(pending_games[game_id]['players']) >= 2:
             bot.send_message(user_id, f"Partie complète. game_id={game_id}, players={pending_games[game_id]['players']}")
             return
@@ -140,6 +143,7 @@ def handle_start(message):
             bot.send_message(user_id, "Tu es déjà l'hôte de cette partie ! Attends ton partenaire.")
             return
         pending_games[game_id]['players'].append(user_id)
+        print(f"Player added: user_id={user_id}, game_id={game_id}, new_players={pending_games[game_id]['players']}")  # Debug log
         bot.send_message(user_id, "Tu as rejoint la partie ! En attente du host pour commencer 😏")
         bot.send_message(
             pending_games[game_id]['host'], 
@@ -291,7 +295,7 @@ def solo_mode(call):
     bot.send_message(user_id, "Choisis un niveau pour ta question :", reply_markup=markup)
     bot.answer_callback_query(call.id)
 
-# === SÉLECTION DEUX NIVEAUX SOLO ===
+# === SÉLECTION DE NIVEAU SOLO ===
 @bot.callback_query_handler(func=lambda call: call.data.startswith("solo_category_"))
 def select_solo_category(call):
     user_id = call.from_user.id
@@ -303,7 +307,7 @@ def select_solo_category(call):
     bot.send_message(user_id, f"*{category}*\n{question}", parse_mode='Markdown')
     # Allow another question
     markup = InlineKeyboardMarkup()
-    markup.row_width = 2
+    markup.row_width = 1
     for cat in questions.keys():
         markup.add(InlineKeyboardButton(cat, callback_data=f"solo_category_{cat}"))
     bot.send_message(user_id, "Choisis un autre niveau pour une nouvelle question :", reply_markup=markup)
@@ -312,8 +316,15 @@ def select_solo_category(call):
 # === FLASK WEBHOOK ===
 @app.route(f"/{TOKEN}", methods=['POST'])
 def webhook():
-    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
-    return '', 200
+    try:
+        update = telebot.types.Update.de_json(request.get_json(force=True))
+        if update:
+            print(f"Received update: update_id={update.update_id}")  # Debug log
+            bot.process_new_updates([update])
+        return '', 200
+    except Exception as e:
+        print(f"Webhook error: {str(e)}")  # Debug log
+        return '', 500
 
 @app.route('/')
 def index():
