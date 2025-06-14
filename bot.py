@@ -13,11 +13,10 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 # --- CONFIGURATION (via variables d'environnement pour la sécurité) ---
-# Assurez-vous de définir la variable d'environnement TELEGRAM_BOT_TOKEN sur votre serveur
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 if not TOKEN:
     logger.critical("Erreur : Le token du bot Telegram (TELEGRAM_BOT_TOKEN) n'est pas défini dans les variables d'environnement.")
-    exit(1) # Quitte l'application si le token est manquant
+    exit(1)
 
 bot = telebot.TeleBot(TOKEN, threaded=False)
 
@@ -29,18 +28,19 @@ except telebot.apihelper.ApiTelegramException as e:
     logger.critical(f"Erreur lors de l'obtention des informations du bot : {e}. Vérifiez le token.")
     exit(1)
 
-# Utilisez une variable d'environnement pour l'URL du webhook, avec une valeur par défaut informative.
-# Sur Render, cette URL sera généralement fournie par l'environnement (ex: WEB_SERVICE_URL).
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL", f"https://votre-app-render.onrender.com/{TOKEN}")
 if "votre-app-render.onrender.com" in WEBHOOK_URL:
     logger.warning("Attention : WEBHOOK_URL utilise une URL par défaut. Assurez-vous de définir la variable d'environnement WEBHOOK_URL sur Render.")
 
 app = Flask(__name__)
 
+# --- CONFIGURATION DES RESSOURCES VISUELLES/SONORES ---
+# REMPLACEZ CES PLACEHOLDERS AVEC VOS VRAIS FILE_ID APRÈS LES AVOIR OBTENUS VIA @RawDataBot
+# Vous aurez besoin d'envoyer le sticker/audio à @RawDataBot pour obtenir l'ID.
+STICKER_PARTY_STARTED = "CAACAgUAAxkBAAE2Ta1oTe1ZXufjVY93_blgMi6DQpliQwACAhMAAik4iFQZz3jGZUU7JjYE" # Exemple: un sticker festif ou "coquin"
+VOICE_TURN_NOTIFICATION = "BQACAgQAAxkBAAE2TdNoTfAqPE98K-dEeOXPApdGWzIUlgACsBkAAsSFcVKq_ncxSd6uoTYE" # Exemple: un audio très court/silencieux pour notification
+
 # --- Persistance des données (avec fichier JSON) ---
-# ATTENTION: Cette approche est simple et ne gère PAS la concurrence ni les pannes robustes.
-# Elle est acceptable pour un prototype ou une application à faible trafic sur Render,
-# mais une vraie base de données (comme Redis ou PostgreSQL) est recommandée pour la production.
 DATA_FILE = 'game_data.json'
 
 def load_data():
@@ -56,14 +56,14 @@ def load_data():
 
 def save_data(data):
     with open(DATA_FILE, 'w') as f:
-        json.dump(data, f, indent=4) # Ajout de l'indentation pour la lisibilité
+        json.dump(data, f, indent=4)
     logger.debug("Données sauvegardées dans game_data.json")
 
 global_data = load_data()
 pending_games = global_data.get('pending_games', {})
 processed_updates = set(global_data.get('processed_updates', []))
 
-# --- QUESTIONS PAR NIVEAU (inchangées) ---
+# --- QUESTIONS PAR NIVEAU (inchangées pour l'instant) ---
 questions = {
     "Icebreaker Fun": [
         "Quel est ton emoji préféré pour draguer ?",
@@ -163,7 +163,7 @@ def delete_game_messages(game_id):
             except telebot.apihelper.ApiTelegramException as e:
                 logger.warning(f"Impossible de supprimer le message {message_id} dans le chat {chat_id}: {e}")
         del pending_games[game_id]
-        save_data(global_data) # Sauvegarde après suppression
+        save_data(global_data)
         logger.info(f"Partie {game_id} et ses messages supprimés.")
 
 def get_game_by_user(user_id):
@@ -176,7 +176,6 @@ def get_game_by_user(user_id):
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     user_id = message.from_user.id
-    # Obtenez le nom de l'utilisateur pour la mention
     user_first_name = message.from_user.first_name if message.from_user.first_name else "Cher utilisateur"
     user_mention = f"[{user_first_name}](tg://user?id={user_id})"
     
@@ -204,9 +203,8 @@ def handle_start(message):
             return
 
         game['players'].append(user_id)
-        # Stockez les informations du joueur qui rejoint
         game['players_info'][user_id] = {'first_name': user_first_name}
-        save_data(global_data) # Sauvegarde l'ajout du joueur
+        save_data(global_data)
         logger.info(f"Joueur ajouté: user_id={user_id}, game_id={game_id}, joueurs={game['players']}")
 
         bot.send_message(user_id, "🎉 Tu as *rejoint la partie* ! En attente de l'hôte pour commencer… 😏", parse_mode='Markdown')
@@ -214,7 +212,7 @@ def handle_start(message):
             game['host'],
             f"🥳 Ton partenaire {user_mention} a rejoint la partie !\nClique sur le bouton ci-dessous pour démarrer le jeu :",
             parse_mode='Markdown',
-            reply_markup=InlineKeyboardMarkup([ # <-- CORRECTION APPLIQUÉE ICI
+            reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🚀 Démarrer la partie", callback_data=f"start_game_{game_id}")]
             ])
         )
@@ -234,25 +232,24 @@ def multiplayer_mode(call):
     user_id = call.from_user.id
     user_first_name = call.from_user.first_name if call.from_user.first_name else "Hôte"
 
-    # Vérifier si l'utilisateur est déjà hôte d'une partie non démarrée
     for gid, game in pending_games.items():
         if game['host'] == user_id and not game['active'] and len(game['players']) < 2:
             bot.send_message(user_id, f"Tu as déjà une partie en attente ! Partage ce lien :\n`https://t.me/{bot_username}?start=join_{gid}`", parse_mode='Markdown')
             bot.answer_callback_query(call.id, "Tu as déjà une partie en cours de création.")
             return
 
-    game_id = str(uuid.uuid4()) # Utiliser un UUID pour un game_id unique
+    game_id = str(uuid.uuid4())
     pending_games[game_id] = {
         'host': user_id,
         'players': [user_id],
-        'players_info': {user_id: {'first_name': user_first_name}}, # Stocke les noms des joueurs
-        'current_chooser_idx': 0, # L'hôte (index 0) commence par choisir la catégorie
-        'current_responder_id': None, # Qui doit répondre à la question actuelle
-        'current_question_message_ids': [], # Pour nettoyer les messages de question
+        'players_info': {user_id: {'first_name': user_first_name}},
+        'current_chooser_idx': 0,
+        'current_responder_id': None,
+        'current_question_message_ids': [],
         'active': False,
-        'messages': [] # Pour les messages généraux du jeu à nettoyer à la fin
+        'messages': []
     }
-    save_data(global_data) # Sauvegarde la nouvelle partie
+    save_data(global_data)
 
     invite_link = f"https://t.me/{bot_username}?start=join_{game_id}"
     bot.send_message(user_id, f"🔗 Envoie ce lien à ton/ta partenaire pour qu'il/elle rejoigne la partie :\n`{invite_link}`\n\n_Tu peux aussi cliquer sur le lien toi-même pour le copier facilement._", parse_mode='Markdown')
@@ -278,38 +275,40 @@ def start_multiplayer_game(call):
         return
 
     game['active'] = True
-    save_data(global_data) # Sauvegarde l'état actif
+    save_data(global_data)
 
-    # Informer les joueurs du démarrage
+    # --- FEEDBACK VISUEL : STICKER POUR LE DÉBUT DE PARTIE ---
     for player_id in game['players']:
+        if STICKER_PARTY_STARTED and STICKER_PARTY_STARTED != "CAACAgIAAxkBAAIDvWc_t-Z...": # Vérifie si l'ID a été mis à jour
+            try:
+                bot.send_sticker(player_id, STICKER_PARTY_STARTED)
+            except telebot.apihelper.ApiTelegramException as e:
+                logger.warning(f"Impossible d'envoyer le sticker {STICKER_PARTY_STARTED} à {player_id}: {e}")
         bot.send_message(player_id, "🎉 *La partie commence !* Amusez-vous bien ! 🔥", parse_mode='Markdown')
 
-    # Nettoyer le message "Démarrer la partie"
     try:
         bot.delete_message(call.message.chat.id, call.message.message_id)
     except telebot.apihelper.ApiTelegramException:
-        pass # Ignore si le message est déjà supprimé
+        pass
 
-    # Envoyer le menu de catégories au premier joueur (l'hôte) pour qu'il choisisse
     chooser_id = game['players'][game['current_chooser_idx']]
     chooser_first_name = game['players_info'].get(chooser_id, {}).get('first_name', 'quelqu\'un')
     chooser_mention = f"[{chooser_first_name}](tg://user?id={chooser_id})"
     
     msg_chooser = bot.send_message(
         chooser_id,
-        f"C'est à *{chooser_mention}* de choisir la première catégorie !",
+        f"🎯 C'est à *{chooser_mention}* de choisir la première catégorie !", # Emoji amélioré
         parse_mode='Markdown',
         reply_markup=create_category_menu()
     )
     game['messages'].append((chooser_id, msg_chooser.message_id))
     
-    # Informer l'autre joueur que ce n'est pas son tour de choisir
     other_player_id = game['players'][1 - game['current_chooser_idx']]
     msg_other = bot.send_message(
         other_player_id,
-        f"C'est au tour de {chooser_mention} de choisir la catégorie. Prépare-toi à répondre !",
+        f"C'est au tour de {chooser_mention} de choisir la catégorie. Prépare-toi à répondre ! 💭", # Emoji amélioré
         parse_mode='Markdown',
-        reply_markup=create_end_game_button() # Permettre de quitter
+        reply_markup=create_end_game_button()
     )
     game['messages'].append((other_player_id, msg_other.message_id))
     
@@ -353,19 +352,25 @@ def select_category(call):
     responder_first_name = game['players_info'].get(responder_id, {}).get('first_name', 'quelqu\'un')
     responder_mention = f"[{responder_first_name}](tg://user?id={responder_id})"
 
-    # Nettoyer les messages de la question précédente si elles existent
     for chat_id, msg_id in game['current_question_message_ids']:
         try:
             bot.delete_message(chat_id, msg_id)
         except telebot.apihelper.ApiTelegramException:
-            pass # Ignore si déjà supprimé
+            pass
     game['current_question_message_ids'] = []
 
-    # Envoyer la question à tous les joueurs
-    msg_text = f"✨ *Catégorie : {category}*\n\n❓ *Question :* {question}\n\n👉 C'est à *{responder_mention}* de répondre à cette question !"
+    # --- FEEDBACK VISUEL : EMOJIS POUR LA QUESTION SELON LA CATÉGORIE ---
+    category_emoji = {
+        "Icebreaker Fun": "✨",
+        "Deep & Curious": "🤔",
+        "Flirty & Cheeky": "😏",
+        "Hot & Spicy": "🌶️🔥",
+        "Dare Time": "😈"
+    }.get(category, "❓") # Emoji par défaut si catégorie non trouvée
+
+    msg_text = f"{category_emoji} *Catégorie : {category}*\n\n❓ *Question :* {question}\n\n👉 C'est à *{responder_mention}* de répondre à cette question !"
     
     for player_id in game['players']:
-        # Utilise ForceReply pour que le répondeur réponde directement à la question
         msg = bot.send_message(
             player_id,
             msg_text,
@@ -373,19 +378,16 @@ def select_category(call):
             reply_markup=ForceReply() if player_id == responder_id else create_end_game_button()
         )
         game['current_question_message_ids'].append((player_id, msg.message_id))
-        game['messages'].append((player_id, msg.message_id)) # Pour le nettoyage en fin de partie
+        game['messages'].append((player_id, msg.message_id))
 
-    game['current_responder_id'] = responder_id # Met à jour qui doit répondre
-    
-    # Préparer le prochain tour: changer le joueur qui choisira la catégorie
-    game['current_chooser_idx'] = responder_idx # Celui qui vient de répondre choisira la prochaine question
+    game['current_responder_id'] = responder_id
+    game['current_chooser_idx'] = responder_idx
 
-    save_data(global_data) # Sauvegarde les états du jeu
+    save_data(global_data)
 
     bot.answer_callback_query(call.id, "Question envoyée !")
     logger.info(f"Partie {game_id}: question '{question}' envoyée à {responder_id}")
     
-    # Nettoyer le message du menu de catégorie pour le joueur qui vient de choisir
     try:
         bot.delete_message(call.message.chat.id, call.message.message_id)
     except telebot.apihelper.ApiTelegramException:
@@ -400,49 +402,43 @@ def handle_player_response(message):
 
     game_id, game = get_game_by_user(user_id)
 
-    # Vérifie si le message est une réponse à un message précédent du bot
     is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == bot.get_me().id
 
     if not game_id or not game['active'] or game['current_responder_id'] != user_id or not is_reply_to_bot:
-        # Ignore les messages qui ne sont pas des réponses attendues dans une partie active
         return
 
     responder_first_name = message.from_user.first_name if message.from_user.first_name else "Quelqu'un"
     responder_mention = f"[{responder_first_name}](tg://user?id={user_id})"
     
-    # Préparer le message de réponse pour l'autre joueur
-    # other_player_id = game['players'][0] if game['players'][1] == user_id else game['players'][1]
-    
-    # Transférer la réponse à tous les joueurs de la partie
+    # --- FEEDBACK SONORE : ENVOI DU VOCAL DE NOTIFICATION ---
     for player_id in game['players']:
         try:
-            bot.send_message(player_id, f"Réponse de {responder_mention} :", parse_mode='Markdown')
-            # Transférer le message original (texte, photo, vocal, etc.)
-            bot.forward_message(
-                chat_id=player_id,
-                from_chat_id=chat_id,
-                message_id=message.message_id
-            )
+            # Envoie le vocal de notification (même s'il est vide)
+            if VOICE_TURN_NOTIFICATION and VOICE_TURN_NOTIFICATION != "AwACAgIAAxkBAAIDyWc_uAb...": # Vérifie si l'ID a été mis à jour
+                bot.send_voice(player_id, VOICE_TURN_NOTIFICATION)
         except telebot.apihelper.ApiTelegramException as e:
-            logger.error(f"Erreur lors du transfert de message dans la partie {game_id} pour {player_id}: {e}")
-            bot.send_message(player_id, "Désolé, je n'ai pas pu transférer la réponse correctement.")
+            logger.warning(f"Impossible d'envoyer la notification vocale {VOICE_TURN_NOTIFICATION} à {player_id}: {e}")
 
+        # --- FEEDBACK VISUEL : EMOJI POUR LA RÉPONSE + TRANSFÈRE ---
+        bot.send_message(player_id, f"Réponse de {responder_mention} : 💌✅", parse_mode='Markdown') # Emoji amélioré
+        bot.forward_message(
+            chat_id=player_id,
+            from_chat_id=chat_id,
+            message_id=message.message_id
+        )
 
-    # Effacer les messages de question précédents (ceux qui ont été posés)
     for c_id, m_id in game['current_question_message_ids']:
         try:
             bot.delete_message(c_id, m_id)
         except telebot.apihelper.ApiTelegramException:
             pass
-    game['current_question_message_ids'] = [] # Réinitialise pour le prochain tour
-    game['current_responder_id'] = None # Le joueur a répondu, plus personne n'est en attente
+    game['current_question_message_ids'] = []
+    game['current_responder_id'] = None
 
-    # Indiquer qui choisira la prochaine question
     next_chooser_id = game['players'][game['current_chooser_idx']]
     next_chooser_first_name = game['players_info'].get(next_chooser_id, {}).get('first_name', 'quelqu\'un')
     next_chooser_mention = f"[{next_chooser_first_name}](tg://user?id={next_chooser_id})"
 
-    # Envoyer le menu de choix au joueur suivant
     msg_chooser_prompt = bot.send_message(
         next_chooser_id,
         f"🎯 C'est maintenant au tour de *{next_chooser_mention}* de choisir la prochaine catégorie !",
@@ -451,17 +447,16 @@ def handle_player_response(message):
     )
     game['messages'].append((next_chooser_id, msg_chooser_prompt.message_id))
     
-    # Informer l'autre joueur que le choix est fait
     other_player_id = game['players'][1 - game['current_chooser_idx']]
     msg_other_info = bot.send_message(
         other_player_id,
-        f"*{next_chooser_mention}* est en train de choisir la prochaine question. Prépare-toi pour la prochaine !",
+        f"*{next_chooser_mention}* est en train de choisir la prochaine question. Prépare-toi pour la prochaine ! ⏳", # Emoji amélioré
         parse_mode='Markdown',
-        reply_markup=create_end_game_button() # Permettre de quitter
+        reply_markup=create_end_game_button()
     )
     game['messages'].append((other_player_id, msg_other_info.message_id))
     
-    save_data(global_data) # Sauvegarde après la réponse et la mise à jour des tours
+    save_data(global_data)
     logger.info(f"Partie {game_id}: Réponse de {user_id} traitée. Prochain à choisir: {next_chooser_id}")
 
 
@@ -476,16 +471,13 @@ def end_game(call):
         bot.answer_callback_query(call.id, "Pas de partie à terminer.")
         return
 
-    # Notifier tous les joueurs de la fin de partie
     for player_id in game['players']:
         bot.send_message(player_id, "👋 La partie est *terminée* ! Merci d'avoir joué à Hot & Curious 🔥\n\nN'hésitez pas à démarrer une nouvelle partie quand vous voulez !", parse_mode='Markdown')
         try:
-            # Tente de supprimer le message de fin de partie du bouton si c'est la source
             bot.delete_message(call.message.chat.id, call.message.message_id)
         except telebot.apihelper.ApiTelegramException:
             pass
 
-    # Supprimer tous les messages de la partie du bot
     delete_game_messages(game_id)
     bot.answer_callback_query(call.id, "Partie terminée !")
     logger.info(f"Partie {game_id} terminée par user {user_id}.")
@@ -512,9 +504,18 @@ def select_solo_category(call):
         bot.answer_callback_query(call.id, "Catégorie inconnue.")
         return
     question = random.choice(questions[category])
-    bot.send_message(user_id, f"✨ *Catégorie : {category}*\n\n❓ *Question :* {question}\n\n_Réfléchis bien à ta réponse !_ 😉", parse_mode='Markdown')
+
+    # --- FEEDBACK VISUEL : EMOJIS POUR LA QUESTION SOLO ---
+    category_emoji = {
+        "Icebreaker Fun": "✨",
+        "Deep & Curious": "🤔",
+        "Flirty & Cheeky": "😏",
+        "Hot & Spicy": "🌶️🔥",
+        "Dare Time": "😈"
+    }.get(category, "❓")
+
+    bot.send_message(user_id, f"{category_emoji} *Catégorie : {category}*\n\n❓ *Question :* {question}\n\n_Réfléchis bien à ta réponse !_ 😉", parse_mode='Markdown')
     
-    # Propose une autre question
     markup = InlineKeyboardMarkup()
     markup.row_width = 1
     for cat in questions.keys():
@@ -530,12 +531,11 @@ def webhook():
         json_data = request.get_json(force=True)
         if not json_data:
             logger.warning("Webhook: JSON vide ou invalide reçu.")
-            return '', 200 # Toujours retourner 200 pour éviter les retransmissions par Telegram
+            return '', 200
 
         try:
             update = telebot.types.Update.de_json(json_data)
             
-            # Vérifiez si l'update_id existe dans l'objet update
             if not hasattr(update, 'update_id'):
                 logger.warning("Webhook: Update sans 'update_id'. Ignoré.")
                 return '', 200
@@ -545,16 +545,13 @@ def webhook():
                 return '', 200
             
             processed_updates.add(update.update_id)
-            # Limiter la taille du set processed_updates pour éviter une consommation mémoire excessive
-            # Garder seulement les N dernières updates
-            if len(processed_updates) > 1000: # Exemple de limite, ajustez si nécessaire
-                # Convertir en liste, trier, et prendre les 1000 plus récentes
+            if len(processed_updates) > 1000:
                 sorted_updates = sorted(list(processed_updates), reverse=True)[:1000]
                 processed_updates.clear()
                 processed_updates.update(sorted_updates)
 
-            global_data['processed_updates'] = list(processed_updates) # Convertir en liste pour JSON
-            save_data(global_data) # Sauvegarde l'ID de l'update
+            global_data['processed_updates'] = list(processed_updates)
+            save_data(global_data)
 
             bot.process_new_updates([update])
             logger.info(f"Update {update.update_id} traitée avec succès.")
@@ -564,7 +561,7 @@ def webhook():
             return '', 500
     else:
         logger.warning(f"Webhook: Requête avec Content-Type inattendu: {request.headers.get('content-type')}")
-        return '', 403 # Refuser les requêtes non JSON
+        return '', 403
 
 
 @app.route('/')
@@ -573,14 +570,13 @@ def index():
 
 if __name__ == "__main__":
     logger.info("Démarrage du bot...")
-    # S'assurer que le webhook est configuré correctement au démarrage
     try:
         bot.remove_webhook()
         bot.set_webhook(url=WEBHOOK_URL)
         logger.info(f"Webhook défini sur : {WEBHOOK_URL}")
     except telebot.apihelper.ApiTelegramException as e:
         logger.critical(f"Impossible de définir le webhook : {e}. Vérifiez l'URL et le token.")
-        exit(1) # Quitte si le webhook ne peut pas être configuré
+        exit(1)
 
     port = int(os.environ.get("PORT", 10000))
     logger.info(f"Lancement de l'application Flask sur le port {port}...")
