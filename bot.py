@@ -5,7 +5,7 @@ import uuid
 import json
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
-from flask import Flask, request # <-- Cette ligne a été déplacée ici !
+from flask import Flask, request
 
 # --- Configuration du Logging ---
 logging.basicConfig(level=logging.INFO,
@@ -35,7 +35,7 @@ WEBHOOK_URL = os.environ.get("WEBHOOK_URL", f"https://votre-app-render.onrender.
 if "votre-app-render.onrender.com" in WEBHOOK_URL:
     logger.warning("Attention : WEBHOOK_URL utilise une URL par défaut. Assurez-vous de définir la variable d'environnement WEBHOOK_URL sur Render.")
 
-app = Flask(__name__) # <-- Maintenant Flask est défini ici !
+app = Flask(__name__)
 
 # --- Persistance des données (avec fichier JSON) ---
 # ATTENTION: Cette approche est simple et ne gère PAS la concurrence ni les pannes robustes.
@@ -214,7 +214,7 @@ def handle_start(message):
             game['host'],
             f"🥳 Ton partenaire {user_mention} a rejoint la partie !\nClique sur le bouton ci-dessous pour démarrer le jeu :",
             parse_mode='Markdown',
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            reply_markup=InlineKeyboardMarkup([ # <-- CORRECTION APPLIQUÉE ICI
                 [InlineKeyboardButton("🚀 Démarrer la partie", callback_data=f"start_game_{game_id}")]
             ])
         )
@@ -284,7 +284,7 @@ def start_multiplayer_game(call):
     for player_id in game['players']:
         bot.send_message(player_id, "🎉 *La partie commence !* Amusez-vous bien ! 🔥", parse_mode='Markdown')
 
-    # Nettopper le message "Démarrer la partie"
+    # Nettoyer le message "Démarrer la partie"
     try:
         bot.delete_message(call.message.chat.id, call.message.message_id)
     except telebot.apihelper.ApiTelegramException:
